@@ -34,6 +34,9 @@ wheels/
 *.swo
 *~
 
+# Cursor IDE config with secrets
+.cursor/mcp.json
+
 # Logs
 *.log
 
