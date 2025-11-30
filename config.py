@@ -15,7 +15,11 @@ BASE_DIR = Path(__file__).parent
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 
 # ID модератора в Telegram
-MODERATOR_ID = int(os.getenv('MODERATOR_ID', '0'))
+MODERATOR_ID_STR = os.getenv('MODERATOR_ID', '0')
+try:
+    MODERATOR_ID = int(MODERATOR_ID_STR) if MODERATOR_ID_STR and MODERATOR_ID_STR != 'your_moderator_telegram_id' else 0
+except ValueError:
+    MODERATOR_ID = 0
 
 # Email настройки
 EMAIL_TO = os.getenv('EMAIL_TO', '')
@@ -35,8 +39,10 @@ RESPONSES_DIR = BASE_DIR / 'responses'
 
 # Проверка обязательных переменных
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не установлен в .env файле")
+    raise ValueError("BOT_TOKEN не установлен в .env файле. Получите токен у @BotFather и добавьте в .env файл.")
 
+# MODERATOR_ID опционален - если не указан, ответы не будут отправляться в Telegram
 if not MODERATOR_ID:
-    raise ValueError("MODERATOR_ID не установлен в .env файле")
+    print("⚠️ ВНИМАНИЕ: MODERATOR_ID не установлен. Ответы пользователей не будут отправляться модератору в Telegram.")
+    print("   Узнайте ваш Telegram ID у @userinfobot и добавьте в .env файл.")
 

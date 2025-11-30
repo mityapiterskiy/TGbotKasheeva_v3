@@ -11,8 +11,15 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.chat_member import ChatMemberStatus
+from aiogram.types import (
+    Message, 
+    CallbackQuery, 
+    InlineKeyboardMarkup, 
+    InlineKeyboardButton,
+    ChatMemberMember,
+    ChatMemberAdministrator,
+    ChatMemberOwner
+)
 
 from config import BOT_TOKEN, CHANNEL_USERNAME, BOT_STRUCTURE_FILE, EMAIL_TO
 from utils import (
@@ -63,15 +70,15 @@ async def check_channel_subscription(user_id: int) -> bool:
         # Проверяем статус пользователя в канале
         member = await bot.get_chat_member(f"@{channel}", user_id)
         
-        # Пользователь считается подписанным если его статус:
-        # - MEMBER - обычный подписчик
-        # - ADMINISTRATOR - администратор канала
-        # - CREATOR - создатель канала
-        is_subscribed = member.status in [
-            ChatMemberStatus.MEMBER,
-            ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.CREATOR
-        ]
+        # Пользователь считается подписанным если его тип:
+        # - ChatMemberMember - обычный подписчик
+        # - ChatMemberAdministrator - администратор канала
+        # - ChatMemberOwner - создатель канала
+        is_subscribed = isinstance(member, (
+            ChatMemberMember,
+            ChatMemberAdministrator,
+            ChatMemberOwner
+        ))
         
         return is_subscribed
     except Exception as e:
@@ -127,45 +134,31 @@ def create_lesson_keyboard(lesson: Dict) -> InlineKeyboardMarkup:
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
-    """Обработчик команды /start"""
-    user_id = message.from_user.id
-    username = message.from_user.username
+    """Обработчик команды /start - показывает приветствие с кнопкой 'Пройти опрос'"""
+    # Показываем приветствие
+    greeting_text = bot_structure.get('greeting', 'Добро пожаловать!')
     
-    # Проверяем подписку на канал
-    if not await check_channel_subscription(user_id):
-        await message.answer(
-            bot_structure.get('channel_check', {}).get('message', 
-                'Подпишитесь на канал для продолжения'),
-            reply_markup=create_subscription_keyboard()
-        )
-        await state.set_state(SurveyStates.waiting_for_subscription)
-        return
+    # Создаем клавиатуру с кнопкой "Пройти опрос"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="Пройти опрос",
+            callback_data="start_survey"
+        )]
+    ])
     
-    # Если подписан, показываем приветствие
-    await message.answer(bot_structure.get('greeting', 'Добро пожаловать!'))
-    
-    # Начинаем опрос
-    await start_survey(message, state)
+    await message.answer(greeting_text, reply_markup=keyboard)
+    await state.clear()
 
 
 @dp.callback_query(F.data == "check_subscription")
 async def check_subscription_callback(callback: CallbackQuery, state: FSMContext):
-    """Проверка подписки после нажатия кнопки"""
+    """Проверка подписки после нажатия кнопки 'Готово'"""
     user_id = callback.from_user.id
     
     if await check_channel_subscription(user_id):
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Начать диалогику",
-                callback_data="start_survey"
-            )]
-        ])
-        await callback.message.edit_text(
-            bot_structure.get('subscription_check', {}).get('message', 
-                'Спасибо за подписку!'),
-            reply_markup=keyboard
-        )
-        await callback.answer("Отлично!")
+        await callback.answer("Отлично! Начинаем опрос.")
+        # Начинаем опрос
+        await start_survey(callback.message, state)
     else:
         await callback.answer(
             "Пожалуйста, подпишитесь на канал, чтобы продолжить",
@@ -175,9 +168,27 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
 
 @dp.callback_query(F.data == "start_survey")
 async def start_survey_callback(callback: CallbackQuery, state: FSMContext):
-    """Начинает опрос после нажатия кнопки"""
+    """Показывает сообщение о подписке после нажатия 'Пройти опрос'"""
     await callback.answer()
-    await start_survey(callback.message, state)
+    
+    # Показываем сообщение о необходимости подписки
+    subscription_message = bot_structure.get('channel_check', {}).get('message', 
+        'Чтобы я могла вам помочь, сначала подпишитесь на мой ТГ канал, там вы найдёте много полезной информации.')
+    
+    # Создаем клавиатуру с кнопками "Подписаться" и "Готово"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="Подписаться",
+            url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"
+        )],
+        [InlineKeyboardButton(
+            text="Готово",
+            callback_data="check_subscription"
+        )]
+    ])
+    
+    await callback.message.edit_text(subscription_message, reply_markup=keyboard)
+    await state.set_state(SurveyStates.waiting_for_subscription)
 
 
 async def start_survey(message: Message, state: FSMContext):
